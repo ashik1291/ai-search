@@ -1,0 +1,19 @@
+version: '3.4'
+services:
+  weaviate:
+    image: semitechnologies/weaviate:latest
+    ports:
+      - "8080:8080"  # HTTP port
+      - "50051:50051"  # gRPC port
+    environment:
+      - QUERY_DEFAULTS_LIMIT=25
+      - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true
+      - PERSISTENCE_DATA_PATH=/var/lib/weaviate
+      - DEFAULT_VECTORIZER_MODULE=none
+      - CLUSTER_HOSTNAME=node1  # Set a hostname for the node
+      - CLUSTER_GOSSIP_BIND_PORT=7100  # Gossip port for single-node setup
+      - CLUSTER_DATA_BIND_PORT=7101  # Data port for single-node setup
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+volumes:
+  weaviate_data:
