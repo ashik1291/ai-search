@@ -1,20 +1,29 @@
 import weaviate
-import weaviate.classes as wvc
+from weaviate.classes.config import Configure, Property, DataType
 
 def create_schema():
     client = weaviate.connect_to_local()
     try:
-        # Create the "Product" class with a property for the composite vector.
-        # We store the product details and the composite embedding (as a NUMBER_ARRAY).
-        product_collection = client.collections.create(
+        # Create the "Product" class with named vectors for text and image embeddings.
+        client.collections.create(
             name="Product",
             properties=[
-                wvc.config.Property(name="name", data_type=wvc.config.DataType.TEXT),
-                wvc.config.Property(name="category", data_type=wvc.config.DataType.TEXT),
-                wvc.config.Property(name="price", data_type=wvc.config.DataType.NUMBER),
-                wvc.config.Property(name="image_path", data_type=wvc.config.DataType.TEXT),
-                wvc.config.Property(name="embedding", data_type=wvc.config.DataType.NUMBER_ARRAY)
-            ]
+                Property(name="name", data_type=DataType.TEXT),
+                Property(name="category", data_type=DataType.TEXT),
+                Property(name="price", data_type=DataType.NUMBER),
+                Property(name="image_path", data_type=DataType.TEXT),
+            ],
+            vectorizer_config=[
+            # Set a named vector for your own uploaded vectors
+            Configure.NamedVectors.none(
+                name="text_embedding",
+                vector_index_config=Configure.VectorIndex.hnsw()    # (Optional) Set vector index options
+            ),
+            Configure.NamedVectors.none(
+                name="image_embedding",
+                vector_index_config=Configure.VectorIndex.hnsw()    # (Optional) Set vector index options
+            )
+    ],
         )
         print("Schema created successfully!")
     finally:
