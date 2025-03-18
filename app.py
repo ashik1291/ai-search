@@ -6,6 +6,7 @@ import os
 import requests
 from io import BytesIO
 import weaviate
+import uuid
 
 # Set the browser tab title and favicon
 st.set_page_config(
@@ -223,26 +224,27 @@ def main():
             st.session_state.page = 1
         if "page_size" not in st.session_state:
             st.session_state.page_size = 2
+
         st.subheader("📦 View Products")
         products = fetch_products_paginated(st.session_state.page, st.session_state.page_size)
-        
+
         if not products:
             st.write("No products found.")
         else:
             for product in products:
                 # Create a card-like layout for each product
                 col1, col2, col3 = st.columns([2, 4, 1])
-                
+
                 with col1:
                     # Display the product image
                     st.image(product.properties['image_path'], width=150)
-                
+
                 with col2:
                     # Display product details
                     st.write(f"**Name:** {product.properties['name']}")
                     st.write(f"**Category:** {product.properties['category']}")
                     st.write(f"**Price:** ${product.properties['price']:.2f}")
-                
+
                 with col3:
                     # Add a delete button with custom red color
                     if st.button(
@@ -253,22 +255,24 @@ def main():
                     ):
                         delete_product(product.uuid)
                         st.rerun()  # Refresh the page after deletion
-                
+
                 st.write("---")
-                # Pagination Controls
-                col_prev, col_next = st.columns(2)
 
-                with col_prev:
-                    if st.session_state.page > 1:
-                        if st.button("⬅️ Previous Page"):
-                            st.session_state.page -= 1
-                            st.rerun()
+            # Pagination Controls (Moved outside the loop)
+            col_prev, col_next = st.columns(2)
 
-                with col_next:
-                    if len(products) == st.session_state.page_size:  # Check if more results exist
-                        if st.button("Next Page ➡️"):
-                            st.session_state.page += 1
-                            st.rerun()
+            with col_prev:
+                if st.session_state.page > 1:
+                    if st.button("⬅️ Previous Page", key=f"prev_page_button"):
+                        st.session_state.page -= 1
+                        st.rerun()
+
+            with col_next:
+                if len(products) == st.session_state.page_size:  # Ensure more results exist
+                    if st.button("Next Page ➡️", key=f"next_page_button"):
+                        st.session_state.page += 1
+                        st.rerun()
+
 
 if __name__ == "__main__":
     main()

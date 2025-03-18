@@ -3,6 +3,7 @@ import weaviate
 from PIL import Image
 import streamlit as st
 import call_gemini as cg
+import call_grog_cloud as cgc
 import io
 import os
 
@@ -56,6 +57,56 @@ def enhance_query_with_gemini(query):
     enhanced_query = response["candidates"][0]["content"]["parts"][0]["text"]
     return enhanced_query
 
+def enhance_query_with_grog(query):
+    """
+    Use Gemini to rephrase or expand the user's query for better search results.
+    """
+    prompt = (
+        f"Rephrase or refine this search query for better matching: {query}. "
+        "Keep the response under 75 characters. Return just the enhanced query in plain text, no special characters."
+        "Do not include lists, no multiple options, or no bullet points—only one sentence."
+    )
+
+    response = cgc.call_groq_api(prompt)
+    return response
+
+def detect_and_translate_query(query):
+    """
+    Uses Gemini to detect the language of the query and translate it into English.
+    """
+    # Step 1: Detect Language
+    detect_prompt = (
+        f"Detect the language of the following text and return only the language name: '{query}'"
+    )
+    detect_response = cg.call_gemini_api(detect_prompt)
+    detected_language = detect_response["candidates"][0]["content"]["parts"][0]["text"].strip().lower()
+
+    print(f"Detected Language: {detected_language}")
+
+    # Step 2: Translate to English if necessary
+    if detected_language != "english":
+        translate_prompt = (
+            f"Translate the following text into English only. No other response.:\n\n'{query}'"
+        )
+        translate_response = cg.call_gemini_api(translate_prompt)
+        translated_query = translate_response["candidates"][0]["content"]["parts"][0]["text"].strip()
+    else:
+        translated_query = query  # No translation needed
+
+    return translated_query
+
+def validate_query_with_gemini_for_content_moderation(query):
+    """
+    Use Gemini to check if the query contains prohibited content.
+    """
+    prompt = (
+        f"Does the following text contain any prohibited content, such as slang, prohibited drugs or drugs name, or inappropriate language, or scam usage? "
+        f"Respond with 'yes' or 'no' only:\n\n'{query}'"
+    )
+    response = cg.call_gemini_api(prompt)
+    validation_result = response["candidates"][0]["content"]["parts"][0]["text"].strip().lower()
+    return validation_result == "yes"
+
 # Use a text-specific model for text embeddings
 text_model = SentenceTransformer('all-MiniLM-L6-v2')  # Lightweight and efficient for text
 
@@ -63,13 +114,22 @@ text_model = SentenceTransformer('all-MiniLM-L6-v2')  # Lightweight and efficien
 image_model = SentenceTransformer('clip-ViT-B-32')
 
 def search_products(query, search_type, threshold):
+
+    if validate_query_with_gemini_for_content_moderation(query):
+        st.error("Your search contains prohibited content. Please refine your query.")
+        return  # Exit the function without performing the search
+
     client = weaviate.connect_to_local()
     try:
         product_collection = client.collections.get("Product")
         
         if search_type == "text":
+
+            # detect the language with geimini get query in english language converted
+            query = detect_and_translate_query(query)
+
             # Enhance the query with Gemini
-            enhanced_query = enhance_query_with_gemini(query)
+            enhanced_query = enhance_query_with_grog(query)
             print(f"Enhanced Text Query: {enhanced_query}")
             
             # Use the text-specific model for text-based search
