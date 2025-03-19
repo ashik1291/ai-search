@@ -6,6 +6,8 @@ import call_gemini as cg
 import call_grog_cloud as cgc
 import io
 import os
+import json
+import re
 
 # Create the "images/searched" folder if it doesn't exist
 os.makedirs("images/searched", exist_ok=True)
@@ -48,13 +50,15 @@ def enhance_query_with_gemini(query):
     Use Gemini to rephrase or expand the user's query for better search results.
     """
     prompt = (
-        f"Rephrase or refine this search query for better matching: {query}. "
-        "Keep the response under 75 characters. Return just the enhanced query in plain text, no special characters."
-        "Do not include lists, no multiple options, or no bullet points—only one sentence."
+        f"Rephrase or refine the following search query to better match the user's intent for product search. "
+        f"Focus on the key intent and context of the query. "
+        f"Ensure the response is clear and under 75 characters. "
+        f"Return only the enhanced query in plain text, without special characters, lists, or multiple options.\n\n"
+        f"Query: {query}"
     )
 
     response = cg.call_gemini_api(prompt)
-    enhanced_query = response["candidates"][0]["content"]["parts"][0]["text"]
+    enhanced_query = response["candidates"][0]["content"]["parts"][0]["text"].strip()
     return enhanced_query
 
 def enhance_query_with_grog(query):
@@ -62,7 +66,7 @@ def enhance_query_with_grog(query):
     Use Gemini to rephrase or expand the user's query for better search results.
     """
     prompt = (
-        f"Rephrase or refine this search query for better matching: {query}. "
+        f"Rephrase or refine this search query for better with intent base search: {query}. "
         "Keep the response under 75 characters. Return just the enhanced query in plain text, no special characters."
         "Do not include lists, no multiple options, or no bullet points—only one sentence."
     )
@@ -107,6 +111,55 @@ def validate_query_with_gemini_for_content_moderation(query):
     validation_result = response["candidates"][0]["content"]["parts"][0]["text"].strip().lower()
     return validation_result == "yes"
 
+def process_query_with_gemini(query):
+    """
+    Use a single Gemini API call to:
+    1. Detect the language of the query.
+    2. Translate the query into English (if necessary).
+    3. Check if the query contains prohibited content.
+    """
+    # Combined prompt for all tasks
+    prompt = (
+        f"Perform the following tasks for the text below:\n\n"
+        f"1. Detect the language of the text and return only the language name.\n"
+        f"2. If the language is not English, translate the text into English.\n"
+        f"3. Check if the text contains prohibited content, such as slang, prohibited drugs, inappropriate language, or scam usage. Respond with 'yes' or 'no'.\n\n"
+        f"Text: '{query}'\n\n"
+        f"Return the response in the following JSON format:\n"
+        f'{{"detected_language": "<language>", "translated_query": "<translated_text>", "contains_prohibited_content": "<yes_or_no>"}}'
+    )
+
+    # Call Gemini API
+    response = cg.call_gemini_api(prompt)
+    print(response["candidates"])
+
+    try:
+        # Extract the JSON string from the Markdown code block
+        response_text = response["candidates"][0]["content"]["parts"][0]["text"].strip()
+        json_str = re.search(r'```json\n(.*?)\n```', response_text, re.DOTALL).group(1)
+
+        # Parse the JSON string
+        response_data = json.loads(json_str)
+
+        # Extract the results
+        detected_language = response_data["detected_language"]
+        translated_query = response_data["translated_query"]
+        contains_prohibited_content = response_data["contains_prohibited_content"] == "yes"
+
+        print(f"Detected Language: {detected_language}")
+        print(f"Translated Query: {translated_query}")
+        print(f"Contains Prohibited Content: {contains_prohibited_content}")
+
+        return {
+            "detected_language": detected_language,
+            "translated_query": translated_query,
+            "contains_prohibited_content": contains_prohibited_content,
+        }
+
+    except (KeyError, json.JSONDecodeError) as e:
+        print(f"Error parsing Gemini response: {e}")
+        return None
+
 # Use a text-specific model for text embeddings
 text_model = SentenceTransformer('all-MiniLM-L6-v2')  # Lightweight and efficient for text
 
@@ -115,21 +168,30 @@ image_model = SentenceTransformer('clip-ViT-B-32')
 
 def search_products(query, search_type, threshold):
 
-    if validate_query_with_gemini_for_content_moderation(query):
-        st.error("Your search contains prohibited content. Please refine your query.")
-        return  # Exit the function without performing the search
-
     client = weaviate.connect_to_local()
     try:
         product_collection = client.collections.get("Product")
         
         if search_type == "text":
 
-            # detect the language with geimini get query in english language converted
-            query = detect_and_translate_query(query)
+                # Step 1: Process the query with Gemini
+            result = process_query_with_gemini(query)
+            
+            if not result:
+                st.error("Failed to process the query. Please try again.")
+                return
+        
+            # Step 2: Check for prohibited content
+            if result["contains_prohibited_content"]:
+                st.error("Your search contains prohibited content. Please refine your query.")
+                return
+        
+            # Step 3: Use the translated query for search
+            translated_query = result["translated_query"]
+            print(f"Translated Query: {translated_query}")
 
             # Enhance the query with Gemini
-            enhanced_query = enhance_query_with_grog(query)
+            enhanced_query = enhance_query_with_gemini(translated_query)
             print(f"Enhanced Text Query: {enhanced_query}")
             
             # Use the text-specific model for text-based search
@@ -149,7 +211,7 @@ def search_products(query, search_type, threshold):
             image_buffer = preprocess_image(query)
             
             # Use CLIP for image-based search
-            query_embedding = image_model.encode(Image.open(query).convert("RGB"))
+            query_embedding = image_model.encode(Image.open(image_buffer).convert("RGB"))
             query_vector = query_embedding.tolist()
             
             # Perform vector search using image embeddings

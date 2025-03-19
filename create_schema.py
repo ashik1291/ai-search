@@ -11,18 +11,24 @@ def create_schema():
                 Property(name="name", data_type=DataType.TEXT),
                 Property(name="category", data_type=DataType.TEXT),
                 Property(name="price", data_type=DataType.NUMBER),
-                Property(name="image_path", data_type=DataType.TEXT),
+                Property(name="description", data_type=DataType.TEXT),
+                Property(name="ratings", data_type=DataType.NUMBER)
             ],
             vectorizer_config=[
             # Set a named vector for your own uploaded vectors
             Configure.NamedVectors.none(
-                name="text_embedding",
+                name="name_embedding",
                 vector_index_config=Configure.VectorIndex.hnsw()    # (Optional) Set vector index options
             ),
             Configure.NamedVectors.none(
-                name="image_embedding",
+                name="description_embedding",
+                vector_index_config=Configure.VectorIndex.hnsw()    # (Optional) Set vector index options
+            ),
+            Configure.NamedVectors.none(
+                name="category_embedding",
                 vector_index_config=Configure.VectorIndex.hnsw()    # (Optional) Set vector index options
             )
+            
     ],
         )
         print("Schema created successfully!")

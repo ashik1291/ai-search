@@ -223,7 +223,7 @@ def main():
         if "page" not in st.session_state:
             st.session_state.page = 1
         if "page_size" not in st.session_state:
-            st.session_state.page_size = 2
+            st.session_state.page_size = 5
 
         st.subheader("📦 View Products")
         products = fetch_products_paginated(st.session_state.page, st.session_state.page_size)
